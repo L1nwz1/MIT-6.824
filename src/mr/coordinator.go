@@ -104,7 +104,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 
 	// Start Map
 	for id, file := range files {
-		c.MapTasks <- Task{FileName: file, IdMap: id}} 
+		c.MapTasks <- Task{FileName: file, IdMap: id}
 	}
 
 	// Start Reduce

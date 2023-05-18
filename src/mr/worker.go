@@ -1,9 +1,15 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
-import "hash/fnv"
+import (
+	"fmt"
+	"log"
+	"net/rpc"
+	"hash/fnv"
+	"io/ioutil"
+	"os"
+	"encoding/json"
+	"strconv"
+)
 
 
 //
@@ -38,7 +44,7 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 		// send the RPC request, wait for the reply.
 		CallGetTask(&args, &reply)
 		filename := reply.XTask.FileName
-		id := strconv.Itoa(reply.XTask.Id)
+		id := strconv.Itoa(reply.XTask.IdMap)
 
 		if filename != "" {
 			file, err := os.Open(filename)
@@ -52,7 +58,7 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 			file.Close()
 			// mapf
 			kva := mapf(filename, string(content))
-			num_reduce = reply.NumReduceTasks
+			num_reduce := reply.NumReduceTasks
 			bucket := make([][]KeyValue, num_reduce)
 
 			for _, kv := range kva {
@@ -67,17 +73,12 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 				}
 				// json encode
 				enc := json.NewEncoder(tmp_file)
-				err := enc.Encode(&bucket[i])
-				if err != nil {
-					log.Fatalf("cannot encode bucket")
-				}
+				enc.Encode(&bucket[i])
 				tmp_file.Close()
 				// rename
 				out_file := "mr-" + strconv.Itoa(i) + "-" + id
-				err := os.Rename(tmp_file.Name(), out_file)
-				if err != nil {
-					log.Fatalf("cannot rename temp file")
-				}
+				os.Rename(tmp_file.Name(), out_file)
+
 			}
 			// map done
 			reply.MapDone <- true
@@ -177,7 +178,7 @@ func CallGetTask(args *TaskRequest, reply *TaskResponse) {
 	// the Example() method of struct Coordinator.
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
-		fmt.Printf("reply.Name %v\n", reply.FileName)
+		fmt.Printf("call get task ok!\n")
 	} else {
 		fmt.Printf("call failed!\n")
 	}
