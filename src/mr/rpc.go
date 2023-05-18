@@ -22,6 +22,16 @@ type ExampleReply struct {
 	Y int
 }
 
+type TaskRequest struct {
+}
+
+type TaskResponse struct {
+	XTask 				Task // map tasks 
+	NumMapTasks 		int // number of map tasks
+	NumReduceTasks 		int // number of reduce tasks
+	Id 					int // task id
+	MapDone 			chan bool // map tasks
+}
 // Add your RPC definitions here.
 
 
@@ -33,4 +43,11 @@ func coordinatorSock() string {
 	s := "/var/tmp/5840-mr-"
 	s += strconv.Itoa(os.Getuid())
 	return s
+}
+
+func AskForTask() *Task {
+	args := ExampleArgs{}
+	reply := ExampleReply{}
+	call("Coordinator.Example", &args, &reply)
+	return nil
 }
