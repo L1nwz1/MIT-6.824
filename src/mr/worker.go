@@ -129,6 +129,9 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 				tmp_file.Close()
 				os.Rename(tmp_file.Name(), out_file)
 			}
+		} 
+		if len(reply.MapDone) == reply.NumMapTasks && reply.XTask.FileName == "" {
+			break
 		}
 	}
 	
