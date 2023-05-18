@@ -9,9 +9,8 @@ import (
 	"os"
 	"encoding/json"
 	"strconv"
+	"sort"
 )
-
-
 //
 // Map functions return a slice of KeyValue.
 //
@@ -19,6 +18,13 @@ type KeyValue struct {
 	Key   string
 	Value string
 }
+
+// sorting by key
+type ByKey []KeyValue
+
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 //
 // use ihash(key) % NReduce to choose the reduce
@@ -78,62 +84,65 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 				// rename
 				out_file := "mr-" + strconv.Itoa(i) + "-" + id
 				os.Rename(tmp_file.Name(), out_file)
-
 			}
 			// map done
-			reply.MapDone <- true
+			CallTaskFin()
 		} else {
 			num := reply.NumMapTasks
 			id := strconv.Itoa(reply.XTask.IdReduce)
-			if len(reply.MapDone) == num {
-				// start reduce
-				kva := []KeyValue{}
-				for i := 0; i < num; i++ {
-					map_filename := "mr-" + strconv.Itoa(i) + "-" + id
-					inputFiles, err := os.OpenFile(map_filename, os.O_RDONLY, 0777)
-					if err != nil {
-						log.Fatalf("cannot open reduce task file :%v", map_filename)
-					}
-					dec := json.NewDecoder(inputFiles)
-					for {
-						var kv []KeyValue
-						if err := dec.Decode(&kv); err != nil {
-							break
-						}
-						kva = append(kva, kv...)
-					}
-				}
-				out_file := "mr-out-" + id
-				tmp_file, err := ioutil.TempFile(".", "mr-out-*")
+			// start reduce
+			kva := []KeyValue{}
+			for i := 0; i < num; i++ {
+				map_filename := "mr-" + strconv.Itoa(i) + "-" + id
+				inputFiles, err := os.OpenFile(map_filename, os.O_RDONLY, 0777)
 				if err != nil {
-					log.Fatalf("cannot create temp file")
+					log.Fatalf("cannot open reduce task file :%v", map_filename)
 				}
-
-				i := 0
-				for i < len(kva) {
-					j := i + 1
-					for j < len(kva) && kva[j].Key == kva[i].Key {
-						j++
+				dec := json.NewDecoder(inputFiles)
+				for {
+					var kv []KeyValue
+					if err := dec.Decode(&kv); err != nil {
+						break
 					}
-					values := []string{}
-					for k := i; k < j; k++ {
-						values = append(values, kva[k].Value)
-					}
-					output := reducef(kva[i].Key, values)
-			
-					// this is the correct format for each line of Reduce output.
-					fmt.Fprintf(tmp_file, "%v %v\n", kva[i].Key, output)
-			
-					i = j
+					kva = append(kva, kv...)
 				}
+			}
+			// sort
+			sort.Sort(ByKey(kva))
+			// reducef
+			out_file := "mr-out-" + id
+			tmp_file, err := ioutil.TempFile(".", "mr-out-*")
+			if err != nil {
+				log.Fatalf("cannot create temp file")
+			}
 
-				tmp_file.Close()
-				os.Rename(tmp_file.Name(), out_file)
+			i := 0
+			for i < len(kva) {
+				j := i + 1
+				for j < len(kva) && kva[j].Key == kva[i].Key {
+					j++
+				}
+				values := []string{}
+				for k := i; k < j; k++ {
+					values = append(values, kva[k].Value)
+				}
+				output := reducef(kva[i].Key, values)
+		
+				// this is the correct format for each line of Reduce output.
+				fmt.Fprintf(tmp_file, "%v %v\n", kva[i].Key, output)
+		
+				i = j
+			}
+
+			tmp_file.Close()
+			os.Rename(tmp_file.Name(), out_file)
+
+			CallTaskFin()
+			if len(reply.MapTaskFin) == reply.NumMapTasks && reply.XTask.FileName == "" {
+				break
 			}
 		} 
-		if len(reply.MapDone) == reply.NumMapTasks && reply.XTask.FileName == "" {
-			break
-		}
+
 	}
 	
 	
@@ -180,7 +189,23 @@ func CallGetTask(args *TaskRequest, reply *TaskResponse) {
 	if ok {
 		fmt.Printf("call get task ok!\n")
 	} else {
-		fmt.Printf("call failed!\n")
+		fmt.Printf("call get task failed!\n")
+	}
+}
+
+func CallTaskFin() {
+	// no use args
+	args := ExampleArgs{}
+
+	args.X = 99
+
+	reply := ExampleReply{}
+
+	ok := call("Coordinator.TaskFin", &args, &reply)
+	if ok {
+		fmt.Printf("call get task fin ok!\n")
+	} else {
+		fmt.Printf("call get task fin failed!\n")
 	}
 }
 

@@ -19,8 +19,8 @@ type Coordinator struct {
 	NumReduceTasks 		int // number of reduce tasks
 	MapTasks 			chan Task // map tasks
 	ReduceTasks 		chan Task // reduce tasks
-	MapDone 			chan bool // map tasks
-	ReduceDone 			chan bool // reduce tasks
+	MapTaskFin 			chan bool // map tasks
+	ReduceTaskFin 		chan bool // reduce tasks
 }
 
 
@@ -36,25 +36,36 @@ type Coordinator struct {
 // 	return nil
 // }
 func (c *Coordinator) GetTask(args *TaskRequest, reply *TaskResponse) error {
-	MapTask, ok := <- c.MapTasks
-	if ok {
-		reply.XTask = MapTask
+	if len(c.MapTaskFin) != c.NumMapTasks {
+		MapTask, ok := <- c.MapTasks
+		if ok {
+			reply.XTask = MapTask
+		}
+	} else {
+		reduceTask, ok := <- c.ReduceTasks
+		if ok {
+			reply.XTask = reduceTask
+		}
 	}
+
 	reply.NumMapTasks = c.NumMapTasks
 	reply.NumReduceTasks = c.NumReduceTasks
-	reply.MapDone = c.MapDone
 
-	if c.State == 0 {
-		// start map
-		
-	} else if c.State == 1 {
-		// finish map and start reduce
-
-	} else if c.State == 2 {
-		// finish reduce
-	}
 	return nil
 }
+
+func (c *Coordinator) TaskFin(args *ExampleArgs, reply *ExampleReply) error {
+	if len(c.MapTaskFin) != c.NumMapTasks {
+		c.MapTaskFin <- true
+	} else {
+		c.ReduceTaskFin <- true
+	}
+
+	return nil
+}
+
+
+
 
 
 //
@@ -80,6 +91,9 @@ func (c *Coordinator) server() {
 func (c *Coordinator) Done() bool {
 	ret := false
 
+	if len(c.ReduceTaskFin) == c.NumReduceTasks {
+		ret = true
+	}
 	// Your code here.
 
 
@@ -98,8 +112,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		NumReduceTasks : 			nReduce,
 		MapTasks : 					make(chan Task, len(files)),
 		ReduceTasks : 				make(chan Task, nReduce),
-		MapDone : 					make(chan bool, len(files)),
-		ReduceDone : 				make(chan bool, nReduce),
+		MapTaskFin : 				make(chan bool, len(files)),
+		ReduceTaskFin : 			make(chan bool, nReduce),
 	}
 
 	// Start Map

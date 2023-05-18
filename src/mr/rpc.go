@@ -30,7 +30,20 @@ type TaskResponse struct {
 	NumMapTasks 		int // number of map tasks
 	NumReduceTasks 		int // number of reduce tasks
 	Id 					int // task id
-	MapDone 			chan bool // map tasks
+	MapTaskFin 			chan bool // map tasks
+	ReduceTaskFin		chan bool // reduce tasks
+}
+
+type TaskFinRequest struct {
+}
+
+type TaskFinResponse struct {
+	XTask 				Task // map tasks 
+	NumMapTasks 		int // number of map tasks
+	NumReduceTasks 		int // number of reduce tasks
+	Id 					int // task id
+	MapTaskFin 			chan bool // map tasks
+	ReduceTaskFin		chan bool // reduce tasks
 }
 // Add your RPC definitions here.
 
