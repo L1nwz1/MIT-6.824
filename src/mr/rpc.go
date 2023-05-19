@@ -6,8 +6,10 @@ package mr
 // remember to capitalize all names.
 //
 
-import "os"
-import "strconv"
+import (
+	"os"
+	"strconv"
+)
 
 //
 // example to show how to declare the arguments
@@ -26,27 +28,25 @@ type TaskRequest struct {
 }
 
 type TaskResponse struct {
-	XTask 				Task // map tasks 
-	NumMapTasks 		int // number of map tasks
-	NumReduceTasks 		int // number of reduce tasks
-	Id 					int // task id
-	MapTaskFin 			chan bool // map tasks
-	ReduceTaskFin		chan bool // reduce tasks
+	XTask          Task // map tasks
+	NumMapTasks    int  // number of map tasks
+	NumReduceTasks int  // number of reduce tasks
+	Id             int  // task id
+	State          int  // 0: map, 1: reduce 2: finish
 }
 
-type TaskFinRequest struct {
-}
+// type TaskFinRequest struct {
+// }
 
-type TaskFinResponse struct {
-	XTask 				Task // map tasks 
-	NumMapTasks 		int // number of map tasks
-	NumReduceTasks 		int // number of reduce tasks
-	Id 					int // task id
-	MapTaskFin 			chan bool // map tasks
-	ReduceTaskFin		chan bool // reduce tasks
-}
+// type TaskFinResponse struct {
+// 	XTask 				Task // map tasks
+// 	NumMapTasks 		int // number of map tasks
+// 	NumReduceTasks 		int // number of reduce tasks
+// 	Id 					int // task id
+// 	MapTaskFin 			chan bool // map tasks
+// 	ReduceTaskFin		chan bool // reduce tasks
+// }
 // Add your RPC definitions here.
-
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.

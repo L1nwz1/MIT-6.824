@@ -1,48 +1,48 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
+import (
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+)
 
 type Task struct {
 	FileName string
-	IdMap int
+	IdMap    int
 	IdReduce int
 }
 
 type Coordinator struct {
 	// Your definitions here.
-	State 				int // 0: start 1: map, 2: reduce
-	NumMapTasks 		int // number of map tasks
-	NumReduceTasks 		int // number of reduce tasks
-	MapTasks 			chan Task // map tasks
-	ReduceTasks 		chan Task // reduce tasks
-	MapTaskFin 			chan bool // map tasks
-	ReduceTaskFin 		chan bool // reduce tasks
+	State          int       // 0: map, 1: reduce 2: finish
+	NumMapTasks    int       // number of map tasks
+	NumReduceTasks int       // number of reduce tasks
+	MapTasks       chan Task // map tasks
+	ReduceTasks    chan Task // reduce tasks
+	MapTaskFin     chan bool // map tasks
+	ReduceTaskFin  chan bool // reduce tasks
 }
-
 
 // Your code here -- RPC handlers for the worker to call.
 
-//
 // an example RPC handler.
 //
 // the RPC argument and reply types are defined in rpc.go.
 //
-// func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
-// 	reply.Y = args.X + 1
-// 	return nil
-// }
+//	func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
+//		reply.Y = args.X + 1
+//		return nil
+//	}
 func (c *Coordinator) GetTask(args *TaskRequest, reply *TaskResponse) error {
 	if len(c.MapTaskFin) != c.NumMapTasks {
-		MapTask, ok := <- c.MapTasks
+		MapTask, ok := <-c.MapTasks
 		if ok {
 			reply.XTask = MapTask
 		}
-	} else {
-		reduceTask, ok := <- c.ReduceTasks
+	} else if len(c.ReduceTaskFin) != c.NumReduceTasks {
+		reduceTask, ok := <-c.ReduceTasks
 		if ok {
 			reply.XTask = reduceTask
 		}
@@ -50,6 +50,7 @@ func (c *Coordinator) GetTask(args *TaskRequest, reply *TaskResponse) error {
 
 	reply.NumMapTasks = c.NumMapTasks
 	reply.NumReduceTasks = c.NumReduceTasks
+	reply.State = c.State
 
 	return nil
 }
@@ -57,20 +58,20 @@ func (c *Coordinator) GetTask(args *TaskRequest, reply *TaskResponse) error {
 func (c *Coordinator) TaskFin(args *ExampleArgs, reply *ExampleReply) error {
 	if len(c.MapTaskFin) != c.NumMapTasks {
 		c.MapTaskFin <- true
-	} else {
+		if len(c.MapTaskFin) == c.NumMapTasks {
+			c.State = 1
+		}
+	} else if len(c.ReduceTaskFin) != c.NumReduceTasks {
 		c.ReduceTaskFin <- true
+		if len(c.ReduceTaskFin) == c.NumReduceTasks {
+			c.State = 2
+		}
 	}
 
 	return nil
 }
 
-
-
-
-
-//
 // start a thread that listens for RPCs from worker.go
-//
 func (c *Coordinator) server() {
 	rpc.Register(c)
 	rpc.HandleHTTP()
@@ -84,10 +85,8 @@ func (c *Coordinator) server() {
 	go http.Serve(l, nil)
 }
 
-//
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
-//
 func (c *Coordinator) Done() bool {
 	ret := false
 
@@ -96,24 +95,21 @@ func (c *Coordinator) Done() bool {
 	}
 	// Your code here.
 
-
 	return ret
 }
 
-//
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
 // nReduce is the number of reduce tasks to use.
-//
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
-		State : 					0,
-		NumMapTasks : 				len(files),
-		NumReduceTasks : 			nReduce,
-		MapTasks : 					make(chan Task, len(files)),
-		ReduceTasks : 				make(chan Task, nReduce),
-		MapTaskFin : 				make(chan bool, len(files)),
-		ReduceTaskFin : 			make(chan bool, nReduce),
+		State:          0,
+		NumMapTasks:    len(files),
+		NumReduceTasks: nReduce,
+		MapTasks:       make(chan Task, len(files)),
+		ReduceTasks:    make(chan Task, nReduce),
+		MapTaskFin:     make(chan bool, len(files)),
+		ReduceTaskFin:  make(chan bool, nReduce),
 	}
 
 	// Start Map
@@ -125,8 +121,6 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	for id := 0; id < nReduce; id++ {
 		c.ReduceTasks <- Task{IdReduce: id}
 	}
-
-
 
 	c.server()
 	return &c

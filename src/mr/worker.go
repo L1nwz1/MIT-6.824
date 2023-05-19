@@ -1,19 +1,18 @@
 package mr
 
 import (
+	"encoding/json"
 	"fmt"
-	"log"
-	"net/rpc"
 	"hash/fnv"
 	"io/ioutil"
+	"log"
+	"net/rpc"
 	"os"
-	"encoding/json"
-	"strconv"
 	"sort"
+	"strconv"
 )
-//
+
 // Map functions return a slice of KeyValue.
-//
 type KeyValue struct {
 	Key   string
 	Value string
@@ -26,20 +25,15 @@ func (a ByKey) Len() int           { return len(a) }
 func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
-//
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
-//
 func ihash(key string) int {
 	h := fnv.New32a()
 	h.Write([]byte(key))
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-
-//
 // main/mrworker.go calls this function.
-//
 func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string) string) {
 	for {
 		// declare an argument structure.
@@ -49,10 +43,11 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 		reply := TaskResponse{}
 		// send the RPC request, wait for the reply.
 		CallGetTask(&args, &reply)
-		filename := reply.XTask.FileName
-		id := strconv.Itoa(reply.XTask.IdMap)
+		State := reply.State
 
-		if filename != "" {
+		if State == 0 {
+			filename := reply.XTask.FileName
+			id := strconv.Itoa(reply.XTask.IdMap)
 			file, err := os.Open(filename)
 			if err != nil {
 				log.Fatalf("cannot open maptask :%v", filename)
@@ -69,30 +64,30 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 
 			for _, kv := range kva {
 				// hash the key and put it into the corresponding bucket
-				bucket[ihash(kv.Key) % num_reduce] = append(bucket[ihash(kv.Key) % num_reduce], kv)
+				bucket[ihash(kv.Key)%num_reduce] = append(bucket[ihash(kv.Key)%num_reduce], kv)
 			}
 
 			for i := 0; i < num_reduce; i++ {
 				tmp_file, err := ioutil.TempFile(".", "mr-map-*")
 				if err != nil {
-					log.Fatalf("cannot create temp file")
+					log.Fatalf("cannot create temp _file")
 				}
 				// json encode
 				enc := json.NewEncoder(tmp_file)
-				enc.Encode(&bucket[i])
+				enc.Encode(bucket[i])
 				tmp_file.Close()
 				// rename
-				out_file := "mr-" + strconv.Itoa(i) + "-" + id
+				out_file := "mr-" + id + "-" + strconv.Itoa(i)
 				os.Rename(tmp_file.Name(), out_file)
 			}
 			// map done
 			CallTaskFin()
-		} else {
-			num := reply.NumMapTasks
+		} else if State == 1 {
+			num_map := reply.NumMapTasks
 			id := strconv.Itoa(reply.XTask.IdReduce)
 			// start reduce
 			kva := []KeyValue{}
-			for i := 0; i < num; i++ {
+			for i := 0; i < num_map; i++ {
 				map_filename := "mr-" + strconv.Itoa(i) + "-" + id
 				inputFiles, err := os.OpenFile(map_filename, os.O_RDONLY, 0777)
 				if err != nil {
@@ -127,10 +122,10 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 					values = append(values, kva[k].Value)
 				}
 				output := reducef(kva[i].Key, values)
-		
+
 				// this is the correct format for each line of Reduce output.
 				fmt.Fprintf(tmp_file, "%v %v\n", kva[i].Key, output)
-		
+
 				i = j
 			}
 
@@ -138,23 +133,21 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 			os.Rename(tmp_file.Name(), out_file)
 
 			CallTaskFin()
-			if len(reply.MapTaskFin) == reply.NumMapTasks && reply.XTask.FileName == "" {
-				break
-			}
-		} 
+
+		} else if State == 2 {
+			fmt.Printf("all done\n")
+			break
+		}
 
 	}
-	
-	
+
 	// CallExample()
 
 }
 
-//
 // example function to show how to make an RPC call to the coordinator.
 //
 // the RPC argument and reply types are defined in rpc.go.
-//
 func CallExample() {
 
 	// declare an argument structure.
@@ -185,12 +178,12 @@ func CallGetTask(args *TaskRequest, reply *TaskResponse) {
 	// the "Coordinator.Example" tells the
 	// receiving server that we'd like to call
 	// the Example() method of struct Coordinator.
-	ok := call("Coordinator.GetTask", &args, &reply)
-	if ok {
-		fmt.Printf("call get task ok!\n")
-	} else {
-		fmt.Printf("call get task failed!\n")
-	}
+	call("Coordinator.GetTask", &args, &reply)
+	// if ok {
+	// 	fmt.Printf("call get task ok!\n")
+	// } else {
+	// 	fmt.Printf("call get task failed!\n")
+	// }
 }
 
 func CallTaskFin() {
@@ -209,11 +202,9 @@ func CallTaskFin() {
 	}
 }
 
-//
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
-//
 func call(rpcname string, args interface{}, reply interface{}) bool {
 	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
 	sockname := coordinatorSock()
